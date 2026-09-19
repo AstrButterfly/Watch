@@ -1,0 +1,680 @@
+<!doctype html>
+<html lang="uk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Годинник і Bluetooth</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --paper: #EDF0EE;
+    --panel: #F9FAF9;
+    --soft: #E1E7E4;
+    --ink: #16202A;
+    --muted: #566470;
+    --line: #CBD3CF;
+    --signal: #0B7285;
+    --signal-ink: #FFFFFF;
+    --alert: #B4400C;
+    --ok: #1B7F4B;
+    --sans: "Golos Text", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --paper: #0E1417;
+      --panel: #151D21;
+      --soft: #1C262B;
+      --ink: #E5ECE9;
+      --muted: #93A1A9;
+      --line: #27343A;
+      --signal: #4CC3D6;
+      --signal-ink: #06262C;
+      --alert: #F08A5D;
+      --ok: #5CCB93;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 400 16px/1.5 var(--sans);
+  }
+  :focus-visible { outline: 2px solid var(--signal); outline-offset: 2px; }
+
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 28px 18px 56px; }
+  header { margin-bottom: 22px; }
+  h1 { margin: 0 0 6px; font-size: clamp(1.7rem, 4vw, 2.4rem); line-height: 1.15; font-weight: 700; letter-spacing: -0.02em; }
+  header p { margin: 0; color: var(--muted); max-width: 60ch; }
+  h2 { margin: 0 0 12px; font-size: 1.05rem; font-weight: 600; }
+
+  .grid { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
+  @media (min-width: 920px) { .grid { grid-template-columns: minmax(0, 5fr) minmax(0, 7fr); align-items: start; } }
+  .col { display: grid; gap: 16px; min-width: 0; }
+
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 14px; padding: 18px; min-width: 0; }
+
+  .notice { border: 1px solid var(--alert); border-radius: 10px; padding: 12px 14px; margin-bottom: 16px; background: var(--panel); }
+  .notice[hidden] { display: none; }
+  .notice strong { color: var(--alert); }
+
+  /* status */
+  .status { display: flex; gap: 12px; align-items: center; margin-bottom: 14px; }
+  .dot { width: 14px; height: 14px; border-radius: 50%; background: var(--line); flex: none; }
+  [data-state="connecting"] .dot { background: var(--signal); opacity: .55; }
+  [data-state="connected"] .dot { background: var(--ok); }
+  [data-state="lost"] .dot { background: var(--alert); }
+  .status-text { font-size: 1.25rem; font-weight: 600; line-height: 1.2; }
+  .status-sub { color: var(--muted); font-size: .9rem; overflow-wrap: anywhere; }
+
+  .btns { display: flex; flex-wrap: wrap; gap: 8px; }
+  button {
+    font: 500 .95rem var(--sans);
+    border-radius: 8px;
+    border: 1px solid var(--line);
+    background: var(--soft);
+    color: var(--ink);
+    padding: 9px 14px;
+    min-height: 40px;
+    cursor: pointer;
+  }
+  button:hover:not(:disabled) { border-color: var(--signal); }
+  button.primary { background: var(--signal); border-color: var(--signal); color: var(--signal-ink); font-weight: 600; }
+  button.small { padding: 5px 10px; min-height: 32px; font-size: .85rem; }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+
+  .facts { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; margin: 16px 0 0; font-size: .92rem; }
+  .facts dt { color: var(--muted); }
+  .facts dd { margin: 0; overflow-wrap: anywhere; }
+  .facts[hidden] { display: none; }
+
+  label.field { display: block; margin-top: 16px; font-size: .9rem; color: var(--muted); }
+  input[type="text"], select {
+    width: 100%;
+    margin-top: 5px;
+    font: 400 .92rem var(--mono);
+    color: var(--ink);
+    background: var(--paper);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 8px 10px;
+    min-height: 38px;
+  }
+  select { font-family: var(--sans); }
+
+  details.tips { margin-top: 16px; font-size: .92rem; }
+  details.tips summary { cursor: pointer; font-weight: 500; }
+  details.tips ul { margin: 8px 0 0; padding-left: 20px; color: var(--muted); }
+  details.tips li { margin: 4px 0; }
+
+  /* heart rate */
+  .hr-main { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .bpm { font-size: clamp(3.4rem, 12vw, 5rem); font-weight: 700; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums; }
+  .bpm-unit { color: var(--muted); }
+  .beat { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: var(--alert); opacity: .25; align-self: center; }
+  .beat.on { animation: beat .5s ease-out; }
+  @keyframes beat { 0% { opacity: 1; transform: scale(1.7); } 100% { opacity: .25; transform: scale(1); } }
+  @media (prefers-reduced-motion: reduce) { .beat.on { animation: none; opacity: 1; } }
+  .hr-note { color: var(--muted); font-size: .9rem; min-height: 1.4em; margin: 4px 0 8px; }
+  #spark { width: 100%; height: 80px; display: block; background: var(--paper); border-radius: 8px; border: 1px solid var(--line); }
+  .stats { display: flex; gap: 22px; margin: 12px 0 14px; font-size: .9rem; color: var(--muted); }
+  .stats b { display: block; color: var(--ink); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+  .saved { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); font-size: .9rem; color: var(--muted); }
+  .saved p { margin: 0 0 8px; }
+
+  /* services */
+  .empty { color: var(--muted); margin: 0; }
+  details.svc { border: 1px solid var(--line); border-radius: 10px; margin-bottom: 8px; background: var(--paper); }
+  details.svc > summary { cursor: pointer; padding: 10px 12px; font-weight: 500; }
+  details.svc > summary small { color: var(--muted); font-family: var(--mono); font-weight: 400; display: block; overflow-wrap: anywhere; }
+  .chr { border-top: 1px solid var(--line); padding: 10px 12px; }
+  .chr-name { font-weight: 500; }
+  .chr-uuid { font: 400 .78rem var(--mono); color: var(--muted); overflow-wrap: anywhere; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 6px 0; }
+  .chip { font-size: .75rem; padding: 1px 8px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted); }
+  .chr-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .val { margin-top: 8px; font: 400 .85rem var(--mono); overflow-wrap: anywhere; white-space: pre-wrap; }
+  .val:empty { display: none; }
+  .write-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; margin-top: 8px; }
+  .write-row[hidden] { display: none; }
+  .write-row select { grid-column: 1 / -1; width: auto; justify-self: start; margin: 0; }
+  .write-row input { margin: 0; }
+
+  /* log */
+  #log { max-height: 280px; overflow: auto; font: 400 .82rem/1.45 var(--mono); border: 1px solid var(--line); border-radius: 8px; background: var(--paper); padding: 8px 10px; }
+  #log .row { display: flex; gap: 10px; }
+  #log time { color: var(--muted); flex: none; }
+  #log .row span { overflow-wrap: anywhere; }
+  #log .err span { color: var(--alert); }
+  #log .ok span { color: var(--ok); }
+  #log:empty::before { content: "Тут з’являтимуться події підключення і дані від годинника."; color: var(--muted); font-family: var(--sans); }
+  .log-actions { margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Годинник і Bluetooth</h1>
+    <p>Сторінка підключається до годинника прямо з браузера, показує, які дані він віддає, і зберігає вимірювання пульсу.</p>
+  </header>
+
+  <div class="notice" id="support" hidden></div>
+
+  <div class="grid">
+    <div class="col">
+      <section class="card" id="conn" data-state="idle">
+        <h2>Підключення</h2>
+        <div class="status">
+          <span class="dot" aria-hidden="true"></span>
+          <div>
+            <div class="status-text" id="stateText" role="status">Годинник не підключено</div>
+            <div class="status-sub" id="stateSub">Натисніть кнопку й оберіть годинник зі списку.</div>
+          </div>
+        </div>
+        <div class="btns">
+          <button class="primary" id="mainBtn">Підключити годинник</button>
+          <button id="otherBtn" hidden>Обрати інший</button>
+        </div>
+
+        <dl class="facts" id="facts" hidden></dl>
+
+        <label class="field" for="extra">Додаткові служби (UUID через кому)
+          <input type="text" id="extra" placeholder="наприклад: fee0, 0000fe95-0000-1000-8000-00805f9b34fb" autocomplete="off" spellcheck="false">
+        </label>
+        <p class="status-sub" style="margin:6px 0 0">Браузер відкриває лише ті служби, які названо до вибору годинника. Змінили список — виберіть годинник ще раз.</p>
+
+        <details class="tips">
+          <summary>Годинник не знаходиться або нічого не віддає</summary>
+          <ul>
+            <li>Працює в Chrome, Edge або Opera на комп’ютері та Android. Safari, Firefox і браузери на iPhone Bluetooth із сайтів не підтримують.</li>
+            <li>Сторінка має відкриватися через https або з localhost.</li>
+            <li>Якщо годинник зараз з’єднаний із телефоном, він може не показуватися в списку. Тимчасово вимкніть Bluetooth на телефоні.</li>
+            <li>У налаштуваннях годинника пошукайте трансляцію пульсу для інших пристроїв, якщо така є.</li>
+            <li>Частину даних виробник віддає лише через власний застосунок, і стандартного доступу для сайту немає.</li>
+          </ul>
+        </details>
+      </section>
+
+      <section class="card">
+        <h2>Пульс</h2>
+        <div class="hr-main">
+          <span class="bpm" id="bpm">—</span>
+          <span class="bpm-unit">уд/хв</span>
+          <span class="beat" id="beat" aria-hidden="true"></span>
+        </div>
+        <p class="hr-note" id="hrNote">Підключіться й натисніть «Слухати пульс».</p>
+        <svg id="spark" viewBox="0 0 300 80" preserveAspectRatio="none" role="img" aria-label="Графік пульсу за останні виміри"></svg>
+        <div class="stats">
+          <div>Мінімум<b id="stMin">—</b></div>
+          <div>Середнє<b id="stAvg">—</b></div>
+          <div>Максимум<b id="stMax">—</b></div>
+        </div>
+        <div class="btns">
+          <button class="primary" id="hrStart" disabled>Слухати пульс</button>
+          <button id="hrStop" disabled>Зупинити</button>
+        </div>
+        <div class="saved">
+          <p id="savedInfo">Збережено вимірів: 0</p>
+          <div class="btns">
+            <button class="small" id="expCsv">Завантажити CSV</button>
+            <button class="small" id="expJson">Завантажити JSON</button>
+            <button class="small" id="clearData">Очистити дані</button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="col">
+      <section class="card">
+        <h2>Служби й характеристики годинника</h2>
+        <div id="services"><p class="empty">Після підключення тут з’явиться все, що годинник відкрив для сайту. Кожну характеристику можна прочитати, слухати або записати.</p></div>
+      </section>
+
+      <section class="card">
+        <h2>Журнал</h2>
+        <div id="log" aria-live="polite"></div>
+        <div class="btns log-actions">
+          <button class="small" id="logCopy">Копіювати журнал</button>
+          <button class="small" id="logClear">Очистити журнал</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  /* ---------- helpers ---------- */
+  const $ = (s) => document.querySelector(s);
+  const BT = '-0000-1000-8000-00805f9b34fb';
+  const u16 = (n) => '0000' + n.toString(16).padStart(4, '0') + BT;
+  const short = (uuid) => {
+    const m = /^0000([0-9a-f]{4})-0000-1000-8000-00805f9b34fb$/i.exec(uuid);
+    return m ? m[1].toLowerCase() : null;
+  };
+
+  const SERVICE_NAMES = {
+    '1800': 'Загальний доступ', '1801': 'Generic Attribute', '180a': 'Інформація про пристрій',
+    '180d': 'Пульс', '180f': 'Батарея', '1809': 'Термометр', '1822': 'Пульсоксиметр',
+    '1805': 'Поточний час', '1802': 'Негайне сповіщення', '1803': 'Втрата зв’язку',
+    '1804': 'Потужність передавача', '181a': 'Датчики середовища',
+    '1816': 'Швидкість і каденс (велосипед)', '1814': 'Швидкість і каденс (біг)',
+    '1826': 'Фітнес-обладнання', '181d': 'Ваги', '181b': 'Склад тіла', '1811': 'Сповіщення',
+    'fee0': 'fee0 (часто Mi / Huami)', 'fee1': 'fee1 (часто Mi / Huami)', 'fe95': 'fe95 (Xiaomi)'
+  };
+  const CHAR_NAMES = {
+    '2a00': 'Назва пристрою', '2a01': 'Вигляд', '2a19': 'Рівень заряду', '2a29': 'Виробник',
+    '2a24': 'Модель', '2a25': 'Серійний номер', '2a26': 'Версія прошивки', '2a27': 'Версія плати',
+    '2a28': 'Версія ПЗ', '2a37': 'Пульс (вимір)', '2a38': 'Розташування датчика',
+    '2a39': 'Керування пульсом', '2a2b': 'Поточний час', '2a5e': 'SpO2 (разовий)', '2a5f': 'SpO2 (безперервний)'
+  };
+  const DEFAULT_SERVICES = [
+    0x180a, 0x180d, 0x180f, 0x1809, 0x1822, 0x1805, 0x1802, 0x1803, 0x1804,
+    0x181a, 0x1816, 0x1814, 0x1826, 0x181d, 0x181b, 0x1811, 0xfee0, 0xfee1, 0xfe95
+  ].map(u16);
+
+  const h = (tag, props = {}, ...kids) => {
+    const el = document.createElement(tag);
+    for (const [k, v] of Object.entries(props)) {
+      if (k === 'class') el.className = v;
+      else if (k === 'text') el.textContent = v;
+      else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
+      else if (v !== false && v != null) el.setAttribute(k, v === true ? '' : v);
+    }
+    for (const kid of kids.flat()) if (kid != null) el.append(kid);
+    return el;
+  };
+
+  const hex = (dv) => Array.from(new Uint8Array(dv.buffer, dv.byteOffset, dv.byteLength))
+    .map((b) => b.toString(16).padStart(2, '0')).join(' ');
+  const asText = (dv) => {
+    try {
+      const s = new TextDecoder('utf-8', { fatal: true }).decode(dv);
+      return /^[\x20-\x7E\u00A0-\uFFFF]+$/.test(s) ? s : null;
+    } catch { return null; }
+  };
+  const fmtValue = (dv) => {
+    const t = asText(dv);
+    return 'hex: ' + (hex(dv) || '(порожньо)') + (t ? '\nтекст: ' + t : '');
+  };
+
+  /* ---------- log ---------- */
+  const logEl = $('#log');
+  function log(msg, kind = 'info') {
+    const row = h('div', { class: 'row ' + kind },
+      h('time', { text: new Date().toLocaleTimeString('uk-UA') }),
+      h('span', { text: msg }));
+    logEl.prepend(row);
+    while (logEl.children.length > 300) logEl.lastChild.remove();
+  }
+  $('#logClear').addEventListener('click', () => { logEl.replaceChildren(); });
+  $('#logCopy').addEventListener('click', async () => {
+    const text = Array.from(logEl.children).reverse().map((r) => r.textContent).join('\n');
+    try { await navigator.clipboard.writeText(text); log('Журнал скопійовано', 'ok'); }
+    catch { log('Не вдалося скопіювати журнал', 'err'); }
+  });
+
+  /* ---------- support check ---------- */
+  const support = $('#support');
+  const supported = 'bluetooth' in navigator;
+  if (!supported || !window.isSecureContext) {
+    support.hidden = false;
+    support.replaceChildren(
+      h('strong', { text: 'Bluetooth тут недоступний. ' }),
+      document.createTextNode(!supported
+        ? 'Цей браузер не підтримує Web Bluetooth. Відкрийте сторінку в Chrome або Edge на комп’ютері чи Android.'
+        : 'Сторінку потрібно відкрити через https або з localhost.'));
+    $('#mainBtn').disabled = true;
+  }
+
+  /* ---------- state ---------- */
+  let device = null;
+  let server = null;
+  let tree = [];
+  const listeners = new Map(); // characteristic -> handler
+  let hrChar = null;
+
+  const conn = $('#conn');
+  function setState(state, text, sub) {
+    conn.dataset.state = state;
+    $('#stateText').textContent = text;
+    $('#stateSub').textContent = sub || '';
+    const main = $('#mainBtn');
+    main.disabled = state === 'connecting' || !supported || !window.isSecureContext;
+    if (state === 'connected') main.textContent = 'Відключити';
+    else if (state === 'connecting') main.textContent = 'Підключення…';
+    else if (device) main.textContent = 'Підключитися знову';
+    else main.textContent = 'Підключити годинник';
+    $('#otherBtn').hidden = !device;
+  }
+
+  function parseExtra(raw) {
+    return raw.split(/[\s,;]+/).map((s) => s.trim().toLowerCase()).filter(Boolean).map((s) => {
+      if (/^[0-9a-f]{4}$/.test(s)) return u16(parseInt(s, 16));
+      if (/^[0-9a-f]{8}$/.test(s)) return s + BT;
+      return s;
+    }).filter((s) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s));
+  }
+
+  /* ---------- connect flow ---------- */
+  async function pick() {
+    const extra = parseExtra($('#extra').value);
+    const optionalServices = Array.from(new Set([...DEFAULT_SERVICES, ...extra]));
+    log('Відкриваю вибір пристрою…');
+    const chosen = await navigator.bluetooth.requestDevice({ acceptAllDevices: true, optionalServices });
+    if (device && device !== chosen) {
+      device.removeEventListener('gattserverdisconnected', onDisconnected);
+      if (device.gatt.connected) device.gatt.disconnect();
+    }
+    device = chosen;
+    device.addEventListener('gattserverdisconnected', onDisconnected);
+    log('Обрано: ' + (device.name || 'пристрій без назви'), 'ok');
+  }
+
+  async function link() {
+    setState('connecting', 'Підключення…', device.name || 'пристрій без назви');
+    try {
+      server = await device.gatt.connect();
+      setState('connected', 'Підключено', device.name || 'пристрій без назви');
+      log('З’єднання встановлено', 'ok');
+      await discover();
+    } catch (e) {
+      log('Не вдалося підключитися: ' + e.message, 'err');
+      setState('lost', 'Не вдалося підключитися', e.message);
+    }
+  }
+
+  async function run(fn) {
+    try { await fn(); }
+    catch (e) {
+      if (e && e.name === 'NotFoundError' && /cancel/i.test(e.message)) {
+        log('Вибір скасовано');
+        setState(device ? 'lost' : 'idle', device ? 'Годинник відключено' : 'Годинник не підключено',
+          device ? 'Натисніть «Підключитися знову».' : 'Натисніть кнопку й оберіть годинник зі списку.');
+      } else {
+        log('Помилка: ' + (e && e.message ? e.message : e), 'err');
+        setState(device ? 'lost' : 'idle', 'Помилка підключення', e && e.message);
+      }
+    }
+  }
+
+  $('#mainBtn').addEventListener('click', () => run(async () => {
+    if (conn.dataset.state === 'connected') { device.gatt.disconnect(); return; }
+    if (!device) await pick();
+    await link();
+  }));
+  $('#otherBtn').addEventListener('click', () => run(async () => { await pick(); await link(); }));
+
+  function onDisconnected() {
+    log('Годинник відключився', 'err');
+    stopAll(true);
+    tree = [];
+    hrChar = null;
+    $('#services').replaceChildren(h('p', { class: 'empty', text: 'Годинник відключено. Підключіться знову, щоб побачити служби.' }));
+    $('#facts').hidden = true;
+    $('#hrStart').disabled = true;
+    $('#hrStop').disabled = true;
+    $('#hrNote').textContent = 'Годинник відключено.';
+    flushSave();
+    setState('lost', 'Годинник відключено', 'Натисніть «Підключитися знову».');
+  }
+
+  /* ---------- discovery & explorer ---------- */
+  const find = (s, c) => {
+    const t = tree.find((x) => short(x.svc.uuid) === s);
+    return t && t.chars.find((x) => short(x.uuid) === c);
+  };
+
+  async function discover() {
+    let services = [];
+    try { services = await server.getPrimaryServices(); }
+    catch (e) { log('Служби не знайдено: ' + e.message, 'err'); }
+    tree = [];
+    for (const svc of services) {
+      let chars = [];
+      try { chars = await svc.getCharacteristics(); }
+      catch (e) { log('Характеристики служби ' + svc.uuid + ': ' + e.message, 'err'); }
+      tree.push({ svc, chars });
+    }
+    log('Знайдено служб: ' + tree.length);
+    renderTree();
+    await readBasics();
+    hrChar = find('180d', '2a37') || null;
+    $('#hrStart').disabled = !hrChar;
+    $('#hrNote').textContent = hrChar
+      ? 'Годинник віддає пульс. Натисніть «Слухати пульс».'
+      : 'Стандартної служби пульсу немає. Перегляньте список служб праворуч.';
+  }
+
+  async function readBasics() {
+    const facts = $('#facts');
+    facts.replaceChildren();
+    const add = (k, v) => facts.append(h('dt', { text: k }), h('dd', { text: v }));
+    add('Назва', device.name || 'без назви');
+    const items = [
+      ['Виробник', '180a', '2a29', (dv) => asText(dv) || hex(dv)],
+      ['Модель', '180a', '2a24', (dv) => asText(dv) || hex(dv)],
+      ['Прошивка', '180a', '2a26', (dv) => asText(dv) || hex(dv)],
+      ['Заряд', '180f', '2a19', (dv) => dv.getUint8(0) + '%']
+    ];
+    for (const [label, s, c, fmt] of items) {
+      const ch = find(s, c);
+      if (!ch || !ch.properties.read) continue;
+      try { add(label, fmt(await ch.readValue())); } catch (e) { log(label + ': ' + e.message, 'err'); }
+    }
+    facts.hidden = false;
+  }
+
+  function renderTree() {
+    const root = $('#services');
+    if (!tree.length) {
+      root.replaceChildren(h('p', { class: 'empty', text: 'Годинник не відкрив жодної служби для сайту. Додайте UUID у поле «Додаткові служби» й виберіть годинник ще раз.' }));
+      return;
+    }
+    root.replaceChildren(...tree.map(({ svc, chars }) => {
+      const s = short(svc.uuid);
+      const name = (s && SERVICE_NAMES[s]) || 'Невідома служба';
+      return h('details', { class: 'svc' },
+        h('summary', {}, name, h('small', { text: svc.uuid })),
+        chars.map(charRow));
+    }));
+  }
+
+  function charRow(ch) {
+    const p = ch.properties;
+    const s = short(ch.uuid);
+    const val = h('div', { class: 'val' });
+    const chips = [
+      p.read && 'читання', p.write && 'запис', p.writeWithoutResponse && 'запис без відповіді',
+      p.notify && 'сповіщення', p.indicate && 'індикація'
+    ].filter(Boolean).map((t) => h('span', { class: 'chip', text: t }));
+
+    const actions = h('div', { class: 'chr-actions' });
+    if (p.read) actions.append(h('button', { class: 'small', text: 'Прочитати', onclick: async () => {
+      try { const dv = await ch.readValue(); val.textContent = fmtValue(dv); log('Читання ' + ch.uuid + ': ' + hex(dv)); }
+      catch (e) { val.textContent = 'Помилка: ' + e.message; log('Читання: ' + e.message, 'err'); }
+    } }));
+
+    if (p.notify || p.indicate) {
+      const btn = h('button', { class: 'small', text: 'Слухати' });
+      btn.addEventListener('click', async () => {
+        try {
+          if (listeners.has(ch)) {
+            await stopListening(ch);
+            btn.textContent = 'Слухати';
+          } else {
+            await startListening(ch, (dv) => { val.textContent = fmtValue(dv); log('Дані ' + ch.uuid + ': ' + hex(dv)); });
+            btn.textContent = 'Зупинити';
+          }
+        } catch (e) { val.textContent = 'Помилка: ' + e.message; log('Сповіщення: ' + e.message, 'err'); }
+      });
+      actions.append(btn);
+    }
+
+    let writeRow = null;
+    if (p.write || p.writeWithoutResponse) {
+      const input = h('input', { type: 'text', placeholder: '01 ff 0a', autocomplete: 'off', spellcheck: 'false' });
+      const mode = h('select', { 'aria-label': 'Формат запису' },
+        h('option', { value: 'hex', text: 'Байти (hex)' }), h('option', { value: 'text', text: 'Текст' }));
+      const go = h('button', { class: 'small', text: 'Записати', onclick: async () => {
+        try { await doWrite(ch, input.value, mode.value); log('Записано в ' + ch.uuid, 'ok'); }
+        catch (e) { val.textContent = 'Помилка: ' + e.message; log('Запис: ' + e.message, 'err'); }
+      } });
+      writeRow = h('div', { class: 'write-row', hidden: true }, mode, input, go);
+      actions.append(h('button', { class: 'small', text: 'Запис…', onclick: () => { writeRow.hidden = !writeRow.hidden; } }));
+    }
+
+    return h('div', { class: 'chr' },
+      h('div', { class: 'chr-name', text: (s && CHAR_NAMES[s]) || 'Характеристика' }),
+      h('div', { class: 'chr-uuid', text: ch.uuid }),
+      h('div', { class: 'chips' }, chips),
+      actions, writeRow, val);
+  }
+
+  async function doWrite(ch, raw, mode) {
+    let bytes;
+    if (mode === 'hex') {
+      const clean = raw.replace(/0x/gi, '').replace(/[\s,:-]/g, '');
+      if (!clean || clean.length % 2 || !/^[0-9a-f]+$/i.test(clean)) throw new Error('Введіть hex-байти, наприклад 01 ff 0a');
+      bytes = Uint8Array.from(clean.match(/../g).map((x) => parseInt(x, 16)));
+    } else {
+      bytes = new TextEncoder().encode(raw);
+    }
+    if (ch.properties.write && ch.writeValueWithResponse) await ch.writeValueWithResponse(bytes);
+    else if (ch.properties.writeWithoutResponse && ch.writeValueWithoutResponse) await ch.writeValueWithoutResponse(bytes);
+    else await ch.writeValue(bytes);
+  }
+
+  async function startListening(ch, cb) {
+    const handler = (ev) => cb(ev.target.value);
+    ch.addEventListener('characteristicvaluechanged', handler);
+    try { await ch.startNotifications(); }
+    catch (e) { ch.removeEventListener('characteristicvaluechanged', handler); throw e; }
+    listeners.set(ch, handler);
+    log('Слухаю ' + ch.uuid, 'ok');
+  }
+  async function stopListening(ch) {
+    const handler = listeners.get(ch);
+    if (!handler) return;
+    listeners.delete(ch);
+    ch.removeEventListener('characteristicvaluechanged', handler);
+    try { await ch.stopNotifications(); } catch { /* пристрій міг уже відключитися */ }
+    log('Зупинено ' + ch.uuid);
+  }
+  function stopAll(silent) {
+    for (const [ch, handler] of listeners) ch.removeEventListener('characteristicvaluechanged', handler);
+    listeners.clear();
+    if (!silent) log('Усі підписки зупинено');
+  }
+
+  /* ---------- heart rate ---------- */
+  const KEY = 'watch-hr-samples-v1';
+  let samples = [];
+  try { samples = JSON.parse(localStorage.getItem(KEY) || '[]'); } catch { samples = []; }
+  let saveTimer = null;
+  function flushSave() {
+    clearTimeout(saveTimer); saveTimer = null;
+    try { localStorage.setItem(KEY, JSON.stringify(samples.slice(-5000))); } catch { /* сховище недоступне */ }
+  }
+  function scheduleSave() { if (!saveTimer) saveTimer = setTimeout(flushSave, 2000); }
+
+  function parseHeartRate(dv) {
+    const flags = dv.getUint8(0);
+    const wide = flags & 0x01;
+    let i = 1;
+    const bpm = wide ? dv.getUint16(i, true) : dv.getUint8(i);
+    i += wide ? 2 : 1;
+    const contactSupported = (flags & 0x04) !== 0;
+    const contact = contactSupported ? (flags & 0x02) !== 0 : null;
+    if (flags & 0x08) i += 2; // енергія
+    const rr = [];
+    if (flags & 0x10) {
+      while (i + 1 < dv.byteLength) { rr.push(Math.round(dv.getUint16(i, true) / 1024 * 1000)); i += 2; }
+    }
+    return { bpm, contact, rr };
+  }
+
+  function onHeartRate(dv) {
+    const { bpm, contact, rr } = parseHeartRate(dv);
+    const beat = $('#beat');
+    beat.classList.remove('on'); void beat.offsetWidth; beat.classList.add('on');
+    if (contact === false) { $('#hrNote').textContent = 'Годинник не торкається шкіри. Затягніть ремінець.'; }
+    else if (bpm > 0) {
+      $('#bpm').textContent = bpm;
+      $('#hrNote').textContent = rr.length ? 'Інтервали між ударами, мс: ' + rr.join(', ') : 'Вимірювання триває.';
+      samples.push({ t: Date.now(), bpm });
+      if (samples.length > 5000) samples.splice(0, samples.length - 5000);
+      scheduleSave();
+    }
+    updateHrUi();
+  }
+
+  function updateHrUi() {
+    const recent = samples.slice(-120).map((s) => s.bpm);
+    const svg = $('#spark');
+    if (recent.length >= 2) {
+      const min = Math.min(...recent) - 5, max = Math.max(...recent) + 5;
+      const W = 300, H = 80;
+      const pts = recent.map((v, i) => ((i / (recent.length - 1)) * W).toFixed(1) + ',' + (H - ((v - min) / (max - min)) * H).toFixed(1)).join(' ');
+      svg.innerHTML = '<polyline points="' + pts + '" fill="none" stroke="var(--signal)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/>';
+    } else { svg.innerHTML = ''; }
+    if (recent.length) {
+      $('#stMin').textContent = Math.min(...recent);
+      $('#stMax').textContent = Math.max(...recent);
+      $('#stAvg').textContent = Math.round(recent.reduce((a, b) => a + b, 0) / recent.length);
+    } else {
+      $('#stMin').textContent = $('#stMax').textContent = $('#stAvg').textContent = '—';
+    }
+    $('#savedInfo').textContent = 'Збережено вимірів: ' + samples.length;
+  }
+
+  $('#hrStart').addEventListener('click', async () => {
+    if (!hrChar) return;
+    try {
+      await startListening(hrChar, onHeartRate);
+      $('#hrStart').disabled = true;
+      $('#hrStop').disabled = false;
+      $('#hrNote').textContent = 'Очікую перший вимір…';
+    } catch (e) { log('Пульс: ' + e.message, 'err'); $('#hrNote').textContent = 'Не вдалося почати: ' + e.message; }
+  });
+  $('#hrStop').addEventListener('click', async () => {
+    if (hrChar) await stopListening(hrChar);
+    $('#hrStart').disabled = false;
+    $('#hrStop').disabled = true;
+    $('#hrNote').textContent = 'Прослуховування зупинено.';
+    flushSave();
+  });
+
+  /* ---------- export ---------- */
+  function download(name, mime, text) {
+    const url = URL.createObjectURL(new Blob([text], { type: mime }));
+    const a = h('a', { href: url, download: name });
+    document.body.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
+  $('#expCsv').addEventListener('click', () => {
+    if (!samples.length) return log('Немає даних для експорту');
+    download('pulse.csv', 'text/csv', 'time,bpm\n' + samples.map((s) => new Date(s.t).toISOString() + ',' + s.bpm).join('\n'));
+  });
+  $('#expJson').addEventListener('click', () => {
+    if (!samples.length) return log('Немає даних для експорту');
+    download('pulse.json', 'application/json', JSON.stringify(samples.map((s) => ({ time: new Date(s.t).toISOString(), bpm: s.bpm })), null, 2));
+  });
+  $('#clearData').addEventListener('click', () => {
+    if (!samples.length || !confirm('Видалити всі збережені виміри пульсу?')) return;
+    samples = []; flushSave(); $('#bpm').textContent = '—'; updateHrUi(); log('Збережені виміри видалено');
+  });
+
+  updateHrUi();
+  setState('idle', 'Годинник не підключено', 'Натисніть кнопку й оберіть годинник зі списку.');
+})();
+</script>
+</body>
+</html>
